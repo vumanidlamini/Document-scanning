@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <title>SmartScan Pro - Professional Document Scanner</title>
+    <title>AutoScan Pro - Intelligent Document Scanner</title>
     <!-- TailwindCSS + Font Awesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -14,10 +14,11 @@
     <style>
         * {
             user-select: none;
+            box-sizing: border-box;
         }
         
-        /* Fullscreen camera specific styles */
-        .fullscreen-camera {
+        /* Fullscreen Camera Styles */
+        .fullscreen-scanner {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
@@ -26,53 +27,98 @@
             width: 100vw !important;
             height: 100vh !important;
             z-index: 9999 !important;
-            background: black !important;
+            background: #000 !important;
             margin: 0 !important;
             padding: 0 !important;
-            border-radius: 0 !important;
         }
         
-        .fullscreen-camera .camera-preview-area {
+        .fullscreen-scanner .camera-wrapper {
             width: 100% !important;
             height: 100vh !important;
-            border-radius: 0 !important;
+            position: relative;
+            background: #000;
         }
         
-        .fullscreen-camera #cameraVideo {
+        .fullscreen-scanner #cameraVideo {
             width: 100% !important;
             height: 100vh !important;
             object-fit: cover !important;
         }
         
-        .fullscreen-camera .scan-guide-overlay {
+        .fullscreen-scanner .scan-overlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
             pointer-events: none;
-        }
-        
-        .fullscreen-camera .camera-controls {
-            position: fixed;
-            bottom: 30px;
-            left: 0;
-            right: 0;
             z-index: 10000;
-            background: transparent;
         }
         
-        .fullscreen-camera .exit-fullscreen-btn {
+        .fullscreen-scanner .auto-capture-indicator {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 12px 24px;
+            border-radius: 60px;
+            color: white;
+            font-weight: bold;
+            z-index: 10001;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            white-space: nowrap;
+        }
+        
+        .fullscreen-scanner .exit-fullscreen {
             position: fixed;
             top: 20px;
             right: 20px;
             z-index: 10001;
             background: rgba(0,0,0,0.6);
             backdrop-filter: blur(10px);
+            padding: 12px 18px;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
         }
         
-        /* Camera container */
-        .camera-preview-area {
+        .fullscreen-scanner .control-panel {
+            position: fixed;
+            bottom: 30px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            z-index: 10001;
+            padding: 0 20px;
+        }
+        
+        .fullscreen-scanner .control-panel button {
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 14px 24px;
+            border-radius: 60px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        /* Camera preview area (normal mode) */
+        .camera-wrapper {
             position: relative;
             background: #000;
             border-radius: 24px;
@@ -84,10 +130,9 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(1);
         }
         
-        #edgeOverlayCanvas {
+        #edgeCanvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -96,61 +141,30 @@
             pointer-events: none;
         }
         
-        .scan-guide-overlay {
+        .scan-guide {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-        }
-        
-        .guide-rect {
-            position: absolute;
-            top: 15%;
-            left: 8%;
-            right: 8%;
-            bottom: 15%;
+            top: 12%;
+            left: 6%;
+            right: 6%;
+            bottom: 12%;
             border: 2px dashed rgba(255, 255, 255, 0.9);
             border-radius: 16px;
-            box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.5);
-            transition: all 0.2s ease;
+            box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            transition: all 0.2s;
         }
         
         .guide-corner {
             position: absolute;
-            width: 40px;
-            height: 40px;
+            width: 35px;
+            height: 35px;
             border: 3px solid #3b82f6;
         }
         
-        .guide-corner-tl {
-            top: -2px;
-            left: -2px;
-            border-right: none;
-            border-bottom: none;
-        }
-        
-        .guide-corner-tr {
-            top: -2px;
-            right: -2px;
-            border-left: none;
-            border-bottom: none;
-        }
-        
-        .guide-corner-bl {
-            bottom: -2px;
-            left: -2px;
-            border-right: none;
-            border-top: none;
-        }
-        
-        .guide-corner-br {
-            bottom: -2px;
-            right: -2px;
-            border-left: none;
-            border-top: none;
-        }
+        .corner-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+        .corner-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+        .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
         
         /* Thumbnails */
         .thumb-scroll {
@@ -158,14 +172,27 @@
             gap: 12px;
             overflow-x: auto;
             padding-bottom: 8px;
-            scrollbar-width: thin;
+        }
+        
+        .thumb-scroll::-webkit-scrollbar {
+            height: 6px;
+        }
+        
+        .thumb-scroll::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+        
+        .thumb-scroll::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 10px;
         }
         
         .thumb-item {
             position: relative;
             flex-shrink: 0;
-            width: 90px;
-            height: 90px;
+            width: 85px;
+            height: 85px;
             border-radius: 12px;
             overflow: hidden;
             border: 2px solid #e2e8f0;
@@ -177,7 +204,6 @@
         .thumb-item.active-thumb {
             border-color: #3b82f6;
             box-shadow: 0 0 0 2px rgba(59,130,246,0.4);
-            transform: scale(1.02);
         }
         
         .thumb-img {
@@ -191,14 +217,13 @@
             top: 4px;
             right: 4px;
             background: rgba(0,0,0,0.75);
-            backdrop-filter: blur(4px);
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            width: 22px;
+            height: 22px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 10px;
             cursor: pointer;
             color: white;
             transition: all 0.2s;
@@ -223,18 +248,7 @@
             to { transform: rotate(360deg); }
         }
         
-        /* Buttons */
-        .btn-primary {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            transition: all 0.2s;
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(59,130,246,0.3);
-        }
-        
-        .ocr-result-box {
+        .ocr-result {
             max-height: 180px;
             overflow-y: auto;
             font-size: 12px;
@@ -243,19 +257,14 @@
             border: 1px solid #e2e8f0;
         }
         
-        /* Scrollbar */
-        .thumb-scroll::-webkit-scrollbar {
-            height: 6px;
+        .pulse-ring {
+            animation: pulse 1.5s infinite;
         }
         
-        .thumb-scroll::-webkit-scrollbar-track {
-            background: #e2e8f0;
-            border-radius: 10px;
-        }
-        
-        .thumb-scroll::-webkit-scrollbar-thumb {
-            background: #94a3b8;
-            border-radius: 10px;
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.7; }
+            70% { transform: scale(1.05); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.7; }
         }
     </style>
 </head>
@@ -269,7 +278,7 @@
         </div>
     </div>
 
-    <!-- Main App (hidden when fullscreen) -->
+    <!-- Main App (visible when not in fullscreen) -->
     <div id="mainApp" class="max-w-6xl mx-auto px-4 py-5">
         <!-- Header -->
         <div class="flex flex-wrap justify-between items-center mb-6 gap-3">
@@ -277,7 +286,7 @@
                 <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
                     <i class="fas fa-scanner text-white text-xl"></i>
                 </div>
-                <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">SmartScan Pro</h1>
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">AutoScan Pro</h1>
             </div>
             <div class="flex gap-2">
                 <label for="galleryImport" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm shadow-md cursor-pointer flex items-center gap-2 transition">
@@ -292,42 +301,35 @@
 
         <!-- Camera Section -->
         <div id="cameraSection" class="bg-white rounded-2xl shadow-xl overflow-hidden mb-6">
-            <div class="camera-preview-area">
+            <div class="camera-wrapper">
                 <video id="cameraVideo" autoplay playsinline muted></video>
-                <canvas id="edgeOverlayCanvas"></canvas>
-                <div class="scan-guide-overlay">
-                    <div class="guide-rect" id="guideRect">
-                        <div class="guide-corner guide-corner-tl"></div>
-                        <div class="guide-corner guide-corner-tr"></div>
-                        <div class="guide-corner guide-corner-bl"></div>
-                        <div class="guide-corner guide-corner-br"></div>
-                    </div>
+                <canvas id="edgeCanvas"></canvas>
+                <div class="scan-guide">
+                    <div class="guide-corner corner-tl"></div>
+                    <div class="guide-corner corner-tr"></div>
+                    <div class="guide-corner corner-bl"></div>
+                    <div class="guide-corner corner-br"></div>
                 </div>
             </div>
-            
-            <!-- Camera Controls -->
             <div class="p-4 bg-white border-t">
                 <div class="flex justify-center gap-4 flex-wrap">
-                    <button id="fullscreenBtn" class="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition flex items-center gap-2">
-                        <i class="fas fa-expand"></i> Fullscreen Camera
+                    <button id="fullscreenBtn" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition flex items-center gap-2">
+                        <i class="fas fa-expand"></i> Start Auto-Scan (Fullscreen)
                     </button>
                     <button id="switchCamBtn" class="bg-gray-700 hover:bg-gray-800 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition flex items-center gap-2">
                         <i class="fas fa-sync-alt"></i> Switch Camera
                     </button>
-                    <button id="captureBtn" class="btn-primary text-white font-bold py-3 px-8 rounded-xl shadow-lg transition flex items-center gap-2 text-lg">
-                        <i class="fas fa-camera"></i> Capture Document
-                    </button>
                 </div>
                 <div id="docStatus" class="text-center mt-3 text-sm font-medium">
-                    <span class="text-yellow-600"><i class="fas fa-info-circle"></i> Position document within blue guides</span>
+                    <span class="text-blue-600"><i class="fas fa-info-circle"></i> Click "Start Auto-Scan" for automatic document detection & capture</span>
                 </div>
             </div>
         </div>
 
-        <!-- Preview & Enhancement Panel -->
+        <!-- Preview Panel -->
         <div id="previewPanel" class="hidden bg-white rounded-2xl shadow-xl p-5 mb-6">
             <h3 class="font-bold text-xl text-gray-800 mb-4 flex items-center gap-2">
-                <i class="fas fa-magic text-purple-600"></i> Enhance & Confirm Scan
+                <i class="fas fa-magic text-purple-600"></i> Enhance & Confirm
             </h3>
             <div class="flex flex-col lg:flex-row gap-6">
                 <div class="lg:w-1/2">
@@ -343,12 +345,12 @@
                         </button>
                     </div>
                     <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
-                        <p class="text-xs text-blue-800"><i class="fas fa-crop-alt"></i> <strong>Auto-enhancement:</strong> Edge detection, perspective crop, grayscale, contrast boost & sharpening</p>
+                        <p class="text-xs text-blue-800"><i class="fas fa-crop-alt"></i> Auto: Edge detection, perspective crop, grayscale, contrast + sharpening</p>
                     </div>
                     <button id="runOcrBtn" class="bg-purple-700 hover:bg-purple-800 text-white w-full py-2 rounded-xl font-semibold transition flex items-center justify-center gap-2">
                         <i class="fas fa-font"></i> Extract Text (OCR)
                     </button>
-                    <div id="ocrResultPanel" class="hidden ocr-result-box p-3">
+                    <div id="ocrResultPanel" class="hidden ocr-result p-3">
                         <p class="font-semibold text-gray-700 mb-2"><i class="fas fa-file-alt text-purple-600"></i> Extracted Text:</p>
                         <p id="ocrTextDisplay" class="text-gray-600 text-xs whitespace-pre-wrap break-words"></p>
                     </div>
@@ -361,7 +363,7 @@
             <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                 <h3 class="font-bold text-xl text-gray-800 flex items-center gap-2">
                     <i class="fas fa-copy"></i> Scanned Pages
-                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg text-sm"> <span id="pageCount">0</span> pages</span>
+                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg text-sm"><span id="pageCount">0</span> pages</span>
                 </h3>
                 <div class="flex gap-2">
                     <input type="text" id="pdfFileName" placeholder="Document name" class="border border-gray-300 rounded-xl px-4 py-2 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -373,8 +375,8 @@
                     </button>
                 </div>
             </div>
-            <div id="thumbnailsContainer" class="thumb-scroll min-h-[120px]">
-                <div class="text-gray-400 text-center w-full py-8">No pages captured yet. Start scanning!</div>
+            <div id="thumbnailsContainer" class="thumb-scroll min-h-[100px]">
+                <div class="text-gray-400 text-center w-full py-8">No pages captured yet. Start auto-scan!</div>
             </div>
         </div>
     </div>
@@ -382,11 +384,11 @@
     <script>
         // DOM Elements
         const video = document.getElementById('cameraVideo');
-        const edgeCanvas = document.getElementById('edgeOverlayCanvas');
-        const captureBtn = document.getElementById('captureBtn');
-        const switchCamBtn = document.getElementById('switchCamBtn');
+        const edgeCanvas = document.getElementById('edgeCanvas');
         const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const switchCamBtn = document.getElementById('switchCamBtn');
         const cameraSection = document.getElementById('cameraSection');
+        const mainApp = document.getElementById('mainApp');
         const previewPanel = document.getElementById('previewPanel');
         const previewCanvas = document.getElementById('previewCanvas');
         const applyKeepBtn = document.getElementById('applyKeepBtn');
@@ -404,7 +406,6 @@
         const ocrResultPanel = document.getElementById('ocrResultPanel');
         const ocrTextDisplay = document.getElementById('ocrTextDisplay');
         const galleryImport = document.getElementById('galleryImport');
-        const mainApp = document.getElementById('mainApp');
 
         // State
         let currentStream = null;
@@ -413,13 +414,15 @@
         let pendingRawImage = null;
         let isProcessing = false;
         let isFullscreen = false;
-        let edgeInterval = null;
+        let autoScanInterval = null;
+        let lastDetectionState = { stable: false, count: 0 };
+        let isAutoCapturing = false;
 
         // Helper functions
         function showLoading(msg) { loadingMessage.innerText = msg; loadingOverlay.classList.remove('hidden'); }
         function hideLoading() { loadingOverlay.classList.add('hidden'); }
 
-        // Camera initialization with high resolution
+        // Camera initialization
         async function initCamera() {
             if (currentStream) currentStream.getTracks().forEach(t => t.stop());
             try {
@@ -434,8 +437,6 @@
                 currentStream = stream;
                 video.srcObject = stream;
                 await video.play();
-                startEdgeDetection();
-                docStatus.innerHTML = '<span class="text-green-600"><i class="fas fa-check-circle"></i> Camera ready. Align document within guides.</span>';
             } catch (err) {
                 console.warn(err);
                 try {
@@ -443,87 +444,173 @@
                     currentStream = fallback;
                     video.srcObject = fallback;
                     await video.play();
-                    startEdgeDetection();
                 } catch (e) {
                     alert("Camera access denied. Please allow permissions.");
                 }
             }
         }
 
-        // Edge detection and highlighting
-        function startEdgeDetection() {
-            if (edgeInterval) clearInterval(edgeInterval);
-            edgeInterval = setInterval(() => {
-                if (!video.videoWidth || video.paused || isFullscreen === undefined) return;
-                
-                const ctx = edgeCanvas.getContext('2d');
-                edgeCanvas.width = video.videoWidth;
-                edgeCanvas.height = video.videoHeight;
-                
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = video.videoWidth;
-                tempCanvas.height = video.videoHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(video, 0, 0);
-                
-                const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                const gray = new Uint8ClampedArray(tempCanvas.width * tempCanvas.height);
-                for (let i = 0; i < imgData.data.length; i += 4) {
-                    gray[i/4] = 0.299 * imgData.data[i] + 0.587 * imgData.data[i+1] + 0.114 * imgData.data[i+2];
-                }
-                
-                const sobelX = [-1,0,1,-2,0,2,-1,0,1];
-                const sobelY = [-1,-2,-1,0,0,0,1,2,1];
-                const edges = new Uint8ClampedArray(tempCanvas.width * tempCanvas.height);
-                let maxGrad = 0;
-                const w = tempCanvas.width, h = tempCanvas.height;
-                
-                for (let y = 1; y < h-1; y++) {
-                    for (let x = 1; x < w-1; x++) {
-                        let gx = 0, gy = 0;
-                        for (let ky = -1; ky <= 1; ky++) {
-                            for (let kx = -1; kx <= 1; kx++) {
-                                const val = gray[(y+ky)*w + (x+kx)];
-                                gx += val * sobelX[(ky+1)*3 + (kx+1)];
-                                gy += val * sobelY[(ky+1)*3 + (kx+1)];
-                            }
-                        }
-                        const mag = Math.hypot(gx, gy);
-                        if (mag > maxGrad) maxGrad = mag;
-                        edges[y*w + x] = mag;
-                    }
-                }
-                
-                const threshold = maxGrad * 0.12;
-                let minX = w, minY = h, maxX = 0, maxY = 0, edgeCount = 0;
-                
-                for (let y = 0; y < h; y++) {
-                    for (let x = 0; x < w; x++) {
-                        if (edges[y*w + x] > threshold) {
-                            edgeCount++;
-                            if (x < minX) minX = x;
-                            if (x > maxX) maxX = x;
-                            if (y < minY) minY = y;
-                            if (y > maxY) maxY = y;
+        // Detect document and get bounding box
+        function detectDocument() {
+            if (!video.videoWidth || video.paused) return null;
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth;
+            tempCanvas.height = video.videoHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(video, 0, 0);
+            
+            const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const gray = new Uint8ClampedArray(tempCanvas.width * tempCanvas.height);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                gray[i/4] = 0.299 * imgData.data[i] + 0.587 * imgData.data[i+1] + 0.114 * imgData.data[i+2];
+            }
+            
+            const sobelX = [-1,0,1,-2,0,2,-1,0,1];
+            const sobelY = [-1,-2,-1,0,0,0,1,2,1];
+            const edges = new Uint8ClampedArray(tempCanvas.width * tempCanvas.height);
+            let maxGrad = 0;
+            const w = tempCanvas.width, h = tempCanvas.height;
+            
+            for (let y = 1; y < h-1; y++) {
+                for (let x = 1; x < w-1; x++) {
+                    let gx = 0, gy = 0;
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const val = gray[(y+ky)*w + (x+kx)];
+                            gx += val * sobelX[(ky+1)*3 + (kx+1)];
+                            gy += val * sobelY[(ky+1)*3 + (kx+1)];
                         }
                     }
+                    const mag = Math.hypot(gx, gy);
+                    if (mag > maxGrad) maxGrad = mag;
+                    edges[y*w + x] = mag;
                 }
+            }
+            
+            const threshold = maxGrad * 0.12;
+            let minX = w, minY = h, maxX = 0, maxY = 0, edgeCount = 0;
+            
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    if (edges[y*w + x] > threshold) {
+                        edgeCount++;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            
+            const docWidth = maxX - minX;
+            const docHeight = maxY - minY;
+            const isDocumentValid = edgeCount > 800 && docWidth > w * 0.25 && docHeight > h * 0.25 && docWidth < w * 0.95 && docHeight < h * 0.95;
+            
+            return { isValid: isDocumentValid, bounds: { minX, minY, maxX, maxY }, edgeCount, w, h };
+        }
+
+        // Draw detection overlay
+        function drawDetectionOverlay(detection) {
+            if (!detection || !detection.isValid) return;
+            const ctx = edgeCanvas.getContext('2d');
+            edgeCanvas.width = detection.w;
+            edgeCanvas.height = detection.h;
+            ctx.clearRect(0, 0, edgeCanvas.width, edgeCanvas.height);
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.rect(detection.bounds.minX, detection.bounds.minY, 
+                     detection.bounds.maxX - detection.bounds.minX, 
+                     detection.bounds.maxY - detection.bounds.minY);
+            ctx.stroke();
+        }
+
+        // Auto-capture logic
+        function startAutoScan() {
+            if (autoScanInterval) clearInterval(autoScanInterval);
+            
+            let stableFrames = 0;
+            let lastValidBounds = null;
+            
+            autoScanInterval = setInterval(async () => {
+                if (isProcessing || isAutoCapturing) return;
                 
-                ctx.clearRect(0, 0, edgeCanvas.width, edgeCanvas.height);
-                if (edgeCount > 500 && (maxX - minX) > w * 0.2 && (maxY - minY) > h * 0.2) {
-                    ctx.strokeStyle = '#10b981';
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.rect(minX, minY, maxX - minX, maxY - minY);
-                    ctx.stroke();
-                    docStatus.innerHTML = '<span class="text-green-600"><i class="fas fa-check-circle"></i> Document detected! Ready to capture.</span>';
+                const detection = detectDocument();
+                
+                if (detection && detection.isValid) {
+                    drawDetectionOverlay(detection);
+                    
+                    // Check if bounds are stable
+                    const boundsKey = `${detection.bounds.minX},${detection.bounds.minY},${detection.bounds.maxX},${detection.bounds.maxY}`;
+                    if (lastValidBounds === boundsKey) {
+                        stableFrames++;
+                    } else {
+                        stableFrames = 0;
+                        lastValidBounds = boundsKey;
+                    }
+                    
+                    // Auto-capture after 5 stable frames (about 1 second)
+                    if (stableFrames >= 5 && !isAutoCapturing) {
+                        isAutoCapturing = true;
+                        await autoCapture();
+                        setTimeout(() => { isAutoCapturing = false; }, 1000);
+                        stableFrames = 0;
+                    }
+                    
+                    if (isFullscreen) {
+                        const indicator = document.querySelector('.auto-capture-indicator');
+                        if (indicator) indicator.style.background = 'rgba(16,185,129,0.9)';
+                    }
                 } else {
-                    docStatus.innerHTML = '<span class="text-yellow-600"><i class="fas fa-exclamation-triangle"></i> Position document within blue guides for best results</span>';
+                    if (isFullscreen) {
+                        const indicator = document.querySelector('.auto-capture-indicator');
+                        if (indicator) indicator.style.background = 'rgba(0,0,0,0.8)';
+                    }
+                    stableFrames = 0;
+                    lastValidBounds = null;
                 }
             }, 200);
         }
 
-        // Capture frame from video
+        // Auto capture and process
+        async function autoCapture() {
+            const rawCanvas = captureFrame();
+            if (!rawCanvas) return;
+            
+            pendingRawImage = rawCanvas;
+            const ctx = previewCanvas.getContext('2d');
+            previewCanvas.width = rawCanvas.width;
+            previewCanvas.height = rawCanvas.height;
+            ctx.drawImage(rawCanvas, 0, 0);
+            
+            // Auto-enhance and add to pages without manual confirmation
+            showLoading('Auto-capturing & enhancing document...');
+            isProcessing = true;
+            try {
+                const enhanced = await enhanceDocument(rawCanvas);
+                const dataUrl = enhanced.toDataURL('image/jpeg', 0.95);
+                capturedPages.push({ dataUrl, width: enhanced.width, height: enhanced.height });
+                updateThumbnails();
+                
+                // Visual feedback
+                if (isFullscreen) {
+                    const indicator = document.querySelector('.auto-capture-indicator');
+                    if (indicator) {
+                        const originalText = indicator.innerHTML;
+                        indicator.innerHTML = '<i class="fas fa-check-circle"></i> Captured!';
+                        setTimeout(() => { indicator.innerHTML = originalText; }, 1000);
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                hideLoading();
+                isProcessing = false;
+            }
+        }
+
+        // Capture frame
         function captureFrame() {
             if (!video.videoWidth) return null;
             const canvas = document.createElement('canvas');
@@ -534,7 +621,7 @@
             return canvas;
         }
 
-        // Enhanced image processing with auto-crop, grayscale, sharpen
+        // Enhance document
         async function enhanceDocument(rawCanvas) {
             return new Promise((resolve) => {
                 const w = rawCanvas.width, h = rawCanvas.height;
@@ -571,12 +658,12 @@
                     ctx.putImageData(imgData, 0, 0);
                 }
                 
-                // Sharpening kernel
+                // Sharpening
                 const sharpenKernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
                 const sharpened = applyConvolution(ctx, w, h, sharpenKernel);
                 ctx.putImageData(sharpened, 0, 0);
                 
-                // Auto crop from edge detection
+                // Auto crop
                 const cropped = autoCropDocument(ctx, w, h);
                 if (cropped) resolve(cropped);
                 else resolve(canvas);
@@ -664,21 +751,8 @@
             return cropped;
         }
 
-        // Capture and preview
-        async function onCapture() {
-            if (isProcessing) return;
-            const raw = captureFrame();
-            if (!raw) return;
-            pendingRawImage = raw;
-            const ctx = previewCanvas.getContext('2d');
-            previewCanvas.width = raw.width;
-            previewCanvas.height = raw.height;
-            ctx.drawImage(raw, 0, 0);
-            previewPanel.classList.remove('hidden');
-            ocrResultPanel.classList.add('hidden');
-        }
-        
-        async function applyEnhanceAndAdd() {
+        // Manual enhance and add
+        async function manualEnhanceAndAdd() {
             if (!pendingRawImage) return;
             showLoading('Enhancing document...');
             isProcessing = true;
@@ -704,13 +778,13 @@
         
         async function runOCR() {
             if (!pendingRawImage) return;
-            showLoading('Extracting text with OCR...');
+            showLoading('Extracting text...');
             try {
                 const { data: { text } } = await Tesseract.recognize(pendingRawImage, 'eng');
                 ocrTextDisplay.innerText = text || '(No text detected)';
                 ocrResultPanel.classList.remove('hidden');
             } catch (err) {
-                ocrTextDisplay.innerText = 'OCR failed: ' + err.message;
+                ocrTextDisplay.innerText = 'OCR failed';
                 ocrResultPanel.classList.remove('hidden');
             } finally {
                 hideLoading();
@@ -720,7 +794,7 @@
         function updateThumbnails() {
             pageCountSpan.innerText = capturedPages.length;
             if (capturedPages.length === 0) {
-                thumbnailsContainer.innerHTML = '<div class="text-gray-400 text-center w-full py-8">No pages captured yet. Start scanning!</div>';
+                thumbnailsContainer.innerHTML = '<div class="text-gray-400 text-center w-full py-8">No pages captured yet. Start auto-scan!</div>';
                 return;
             }
             thumbnailsContainer.innerHTML = '';
@@ -740,10 +814,6 @@
                 };
                 div.appendChild(img);
                 div.appendChild(delBtn);
-                div.onclick = () => {
-                    document.querySelectorAll('.thumb-item').forEach(el => el.classList.remove('active-thumb'));
-                    div.classList.add('active-thumb');
-                };
                 thumbnailsContainer.appendChild(div);
             });
         }
@@ -802,13 +872,63 @@
         
         function toggleFullscreen() {
             if (!isFullscreen) {
-                cameraSection.classList.add('fullscreen-camera');
+                cameraSection.classList.add('fullscreen-scanner');
                 isFullscreen = true;
-                fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i> Exit Fullscreen';
-            } else {
-                cameraSection.classList.remove('fullscreen-camera');
-                isFullscreen = false;
-                fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i> Fullscreen Camera';
+                
+                // Add fullscreen UI elements
+                const exitBtn = document.createElement('button');
+                exitBtn.className = 'exit-fullscreen';
+                exitBtn.innerHTML = '<i class="fas fa-times-circle"></i> Exit Auto-Scan';
+                exitBtn.onclick = exitFullscreen;
+                cameraSection.appendChild(exitBtn);
+                
+                const indicator = document.createElement('div');
+                indicator.className = 'auto-capture-indicator';
+                indicator.innerHTML = '<i class="fas fa-sync-alt pulse-ring"></i> Auto-scan active - align document';
+                cameraSection.appendChild(indicator);
+                
+                const controls = document.createElement('div');
+                controls.className = 'control-panel';
+                controls.innerHTML = `
+                    <button id="fsSwitchCam"><i class="fas fa-sync-alt"></i> Switch Camera</button>
+                    <button id="fsStopScan"><i class="fas fa-stop"></i> Stop & Exit</button>
+                `;
+                cameraSection.appendChild(controls);
+                
+                document.getElementById('fsSwitchCam').onclick = switchCamera;
+                document.getElementById('fsStopScan').onclick = exitFullscreen;
+                
+                startAutoScan();
+                docStatus.innerHTML = '<span class="text-green-600"><i class="fas fa-check-circle"></i> Auto-scan active! Place document in frame - will capture automatically.</span>';
+            }
+        }
+        
+        function exitFullscreen() {
+            cameraSection.classList.remove('fullscreen-scanner');
+            isFullscreen = false;
+            if (autoScanInterval) clearInterval(autoScanInterval);
+            autoScanInterval = null;
+            
+            // Remove fullscreen elements
+            const exitBtn = cameraSection.querySelector('.exit-fullscreen');
+            const indicator = cameraSection.querySelector('.auto-capture-indicator');
+            const controls = cameraSection.querySelector('.control-panel');
+            if (exitBtn) exitBtn.remove();
+            if (indicator) indicator.remove();
+            if (controls) controls.remove();
+            
+            docStatus.innerHTML = '<span class="text-blue-600"><i class="fas fa-info-circle"></i> Click "Start Auto-Scan" for automatic document detection & capture</span>';
+        }
+        
+        async function switchCamera() {
+            facingMode = facingMode === 'environment' ? 'user' : 'environment';
+            await initCamera();
+        }
+        
+        function clearAll() {
+            if (capturedPages.length > 0 && confirm('Delete all scanned pages?')) {
+                capturedPages = [];
+                updateThumbnails();
             }
         }
         
@@ -837,25 +957,12 @@
             hideLoading();
         }
         
-        async function switchCamera() {
-            facingMode = facingMode === 'environment' ? 'user' : 'environment';
-            await initCamera();
-        }
-        
-        function clearAll() {
-            if (capturedPages.length > 0 && confirm('Delete all scanned pages?')) {
-                capturedPages = [];
-                updateThumbnails();
-            }
-        }
-        
         // Event listeners
-        captureBtn.onclick = onCapture;
-        applyKeepBtn.onclick = applyEnhanceAndAdd;
+        fullscreenBtn.onclick = toggleFullscreen;
+        switchCamBtn.onclick = switchCamera;
+        applyKeepBtn.onclick = manualEnhanceAndAdd;
         cancelPreviewBtn.onclick = cancelPreview;
         runOcrBtn.onclick = runOCR;
-        switchCamBtn.onclick = switchCamera;
-        fullscreenBtn.onclick = toggleFullscreen;
         clearAllBtn.onclick = clearAll;
         downloadPdfBtn.onclick = downloadPDF;
         previewPdfBtn.onclick = previewPDF;
