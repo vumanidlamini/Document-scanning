@@ -2,69 +2,106 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ScanFlow - Document Scanner</title>
-    <!-- TailwindCSS + FontAwesome (for quick icons) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>SmartScan Pro - Document Scanner with OCR</title>
+    <!-- TailwindCSS + Font Awesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <!-- pdf-lib + jspdf (using pdf-lib for better image embedding) -->
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <!-- html2canvas is not needed; we use canvas processing -->
+    <!-- PDF Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- Tesseract.js for OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        /* custom focus & transitions */
-        .btn-transition {
-            transition: all 0.2s ease;
+        * {
+            box-sizing: border-box;
         }
-        .camera-preview-container {
-            background: #000;
-            border-radius: 1.5rem;
-            overflow: hidden;
+        .camera-container {
             position: relative;
-            aspect-ratio: 4 / 3;
-        }
-        video {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
+            background: #000;
+            overflow: hidden;
+            border-radius: 1.5rem;
         }
-        canvas {
+        #cameraVideo {
             width: 100%;
             height: auto;
             display: block;
+            object-fit: cover;
+            transform: scaleX(1);
         }
-        .thumb-grid {
-            display: flex;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            gap: 0.75rem;
-            padding-bottom: 0.5rem;
+        /* Edge overlay canvas */
+        #edgeCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .scan-guide {
+            position: absolute;
+            top: 15%;
+            left: 8%;
+            right: 8%;
+            bottom: 15%;
+            border: 2px dashed rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            pointer-events: none;
+            box-shadow: 0 0 0 2000px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        .guide-corner {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #3b82f6;
+        }
+        .fullscreen-camera {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1000;
+            background: #000;
+            border-radius: 0;
+        }
+        .fullscreen-camera .camera-container {
+            border-radius: 0;
+            height: 100vh;
+        }
+        .fullscreen-camera #cameraVideo {
+            height: 100vh;
+            object-fit: cover;
         }
         .thumb-item {
-            flex: 0 0 80px;
             position: relative;
+            flex-shrink: 0;
+            width: 85px;
+            height: 85px;
             border-radius: 12px;
             overflow: hidden;
-            border: 2px solid transparent;
-            transition: 0.1s;
+            border: 2px solid #e2e8f0;
+            cursor: pointer;
+            transition: all 0.1s;
         }
         .thumb-item.active-thumb {
             border-color: #3b82f6;
             box-shadow: 0 0 0 2px rgba(59,130,246,0.5);
         }
         .thumb-img {
-            width: 80px;
-            height: 80px;
+            width: 100%;
+            height: 100%;
             object-fit: cover;
-            display: block;
         }
         .delete-thumb {
             position: absolute;
-            top: 2px;
-            right: 2px;
-            background: rgba(0,0,0,0.6);
-            border-radius: 999px;
-            width: 20px;
-            height: 20px;
+            top: 4px;
+            right: 4px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -72,446 +109,521 @@
             cursor: pointer;
             color: white;
         }
-        .loader {
-            border: 3px solid #f3f3f3;
+        .loader-spinner {
+            border: 3px solid #e2e8f0;
             border-top: 3px solid #3b82f6;
             border-radius: 50%;
             width: 40px;
             height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
+            animation: spin 0.8s linear infinite;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .overlay-loading {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            backdrop-filter: blur(4px);
+        .ocr-result-box {
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 12px;
+            background: #f8fafc;
+            border-radius: 12px;
         }
     </style>
 </head>
-<body class="bg-gray-100 font-sans antialiased">
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 font-sans">
 
-    <!-- Global loading overlay -->
-    <div id="loadingOverlay" class="overlay-loading hidden">
-        <div class="bg-white rounded-2xl p-6 text-center shadow-xl max-w-xs w-full">
-            <div class="loader mb-3"></div>
-            <p id="loadingMessage" class="text-gray-700 font-medium">Processing image...</p>
+    <!-- Global Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[2000] hidden backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 text-center max-w-xs w-full shadow-2xl">
+            <div class="loader-spinner mx-auto mb-4"></div>
+            <p id="loadingMessage" class="text-gray-700 font-medium">Processing...</p>
         </div>
     </div>
 
-    <div class="max-w-4xl mx-auto px-4 py-5 md:py-8">
+    <!-- Main App Container -->
+    <div class="max-w-5xl mx-auto px-4 py-4 md:py-6">
         <!-- Header -->
-        <div class="flex flex-wrap items-center justify-between mb-5">
-            <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-scanner"></i> ScanFlow</h1>
+        <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-mobile-alt text-2xl text-blue-600"></i>
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">SmartScan Pro</h1>
+            </div>
             <div class="flex gap-2">
-                <button id="switchCamBtn" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-full text-sm shadow-md flex items-center gap-2"><i class="fas fa-sync-alt"></i> Flip Cam</button>
-                <label for="galleryInput" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full text-sm shadow-md cursor-pointer flex items-center gap-2"><i class="fas fa-images"></i> Import</label>
-                <input type="file" id="galleryInput" accept="image/*" multiple class="hidden">
+                <button id="fullscreenBtn" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm shadow-md flex items-center gap-2"><i class="fas fa-expand"></i> Fullscreen</button>
+                <button id="switchCamBtn" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm shadow-md flex items-center gap-2"><i class="fas fa-sync-alt"></i> Flip</button>
+                <label for="galleryImport" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm shadow-md cursor-pointer flex items-center gap-2"><i class="fas fa-images"></i> Import</label>
+                <input type="file" id="galleryImport" accept="image/*" multiple class="hidden">
             </div>
         </div>
 
-        <!-- Camera preview & capture row -->
-        <div class="bg-white rounded-2xl shadow-md p-4 mb-6">
-            <div class="camera-preview-container mb-3">
-                <video id="video" autoplay playsinline muted></video>
-            </div>
-            <div class="flex justify-center gap-4 mt-2">
-                <button id="captureBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition flex items-center gap-2"><i class="fas fa-camera"></i> Capture Page</button>
-                <button id="retakePreviewBtn" class="hidden bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-full shadow transition"><i class="fas fa-undo-alt"></i> Retake</button>
-            </div>
-        </div>
-
-        <!-- Captured preview (single shot) -->
-        <div id="capturePreviewArea" class="hidden bg-white rounded-2xl shadow-md p-4 mb-6">
-            <h3 class="font-semibold text-gray-700 mb-2">Preview - Apply Enhancement</h3>
-            <div class="flex flex-col md:flex-row gap-4 items-center">
-                <div class="w-full md:w-1/2">
-                    <canvas id="previewCanvas" class="rounded-lg border border-gray-200 w-full"></canvas>
+        <!-- Camera Section with Overlays -->
+        <div class="relative" id="cameraWrapper">
+            <div class="camera-container shadow-2xl" id="cameraContainer">
+                <video id="cameraVideo" autoplay playsinline muted></video>
+                <canvas id="edgeCanvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+                <div class="scan-guide" id="scanGuide">
+                    <div class="guide-corner absolute top-0 left-0 border-t-4 border-l-4 border-blue-400"></div>
+                    <div class="guide-corner absolute top-0 right-0 border-t-4 border-r-4 border-blue-400"></div>
+                    <div class="guide-corner absolute bottom-0 left-0 border-b-4 border-l-4 border-blue-400"></div>
+                    <div class="guide-corner absolute bottom-0 right-0 border-b-4 border-r-4 border-blue-400"></div>
                 </div>
-                <div class="w-full md:w-1/2 space-y-3">
+            </div>
+            <div class="flex justify-center gap-4 mt-4">
+                <button id="captureBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition flex items-center gap-2 text-lg"><i class="fas fa-camera"></i> Capture Document</button>
+                <button id="retakeBtn" class="hidden bg-yellow-600 text-white font-bold py-3 px-6 rounded-full shadow-lg">Retake</button>
+            </div>
+            <div id="docStatus" class="text-center mt-2 text-sm font-medium text-gray-600"></div>
+        </div>
+
+        <!-- Captured Preview & Enhancement -->
+        <div id="previewArea" class="hidden bg-white rounded-2xl shadow-xl p-4 mt-6">
+            <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-magic text-purple-600"></i> Enhance & Confirm</h3>
+            <div class="flex flex-col md:flex-row gap-5">
+                <div class="md:w-1/2">
+                    <canvas id="previewCanvas" class="w-full rounded-xl border border-gray-200 shadow"></canvas>
+                </div>
+                <div class="md:w-1/2 space-y-3">
                     <div class="flex flex-wrap gap-2">
-                        <button id="applyEnhanceBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-magic"></i> Enhance & Keep</button>
-                        <button id="cancelPreviewBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-times"></i> Cancel</button>
+                        <button id="applyKeepBtn" class="bg-green-600 text-white px-5 py-2 rounded-xl"><i class="fas fa-check-circle"></i> Keep & Add Page</button>
+                        <button id="cancelPreviewBtn" class="bg-gray-500 text-white px-5 py-2 rounded-xl"><i class="fas fa-times"></i> Cancel</button>
                     </div>
-                    <div class="text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
-                        <p><i class="fas fa-crop-alt"></i> Auto edge detection + grayscale, contrast, sharpening.</p>
+                    <div class="bg-blue-50 p-3 rounded-xl">
+                        <p class="text-xs text-blue-800"><i class="fas fa-crop-alt"></i> Auto perspective correction + grayscale + sharpening + edge crop applied</p>
+                    </div>
+                    <button id="runOcrBtn" class="bg-purple-700 text-white w-full py-2 rounded-xl text-sm"><i class="fas fa-font"></i> Run OCR on this page</button>
+                    <div id="ocrResultPanel" class="hidden ocr-result-box p-3">
+                        <p class="font-semibold text-gray-700"><i class="fas fa-file-alt"></i> Extracted Text:</p>
+                        <p id="ocrTextDisplay" class="text-gray-600 text-xs mt-1 whitespace-pre-wrap break-words"></p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Multiple pages management -->
-        <div class="bg-white rounded-2xl shadow-md p-4 mb-6">
-            <div class="flex justify-between items-center flex-wrap mb-3">
-                <h3 class="font-semibold text-gray-700"><i class="fas fa-copy"></i> Pages (<span id="pageCount">0</span>)</h3>
-                <div class="flex gap-2">
-                    <button id="clearAllBtn" class="text-red-600 text-sm bg-red-50 px-3 py-1 rounded-full"><i class="fas fa-trash-alt"></i> Clear All</button>
-                </div>
+        <!-- Multi-Page Thumbnails -->
+        <div class="bg-white rounded-2xl shadow-xl p-4 mt-6">
+            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <h3 class="font-bold text-gray-800"><i class="fas fa-copy"></i> Scanned Pages (<span id="pageCount">0</span>)</h3>
+                <button id="clearAllBtn" class="text-red-600 text-sm bg-red-50 px-3 py-1 rounded-full"><i class="fas fa-trash"></i> Clear All</button>
             </div>
-            <div id="thumbnailsContainer" class="thumb-grid min-h-[100px]">
-                <div class="text-gray-400 text-center w-full py-6">No pages captured yet. Capture or import images.</div>
+            <div id="thumbnailsList" class="flex gap-3 overflow-x-auto pb-3 min-h-[100px]">
+                <div class="text-gray-400 text-center w-full py-6">No pages scanned yet</div>
             </div>
-            <div class="flex justify-end mt-4">
-                <div class="flex gap-3">
-                    <input type="text" id="pdfFileName" placeholder="File name (no extension)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-40">
-                    <button id="generatePdfBtn" class="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2 px-5 rounded-xl shadow flex items-center gap-2"><i class="fas fa-file-pdf"></i> Download PDF</button>
-                </div>
+            <div class="mt-5 border-t pt-4 flex flex-wrap gap-3 justify-end items-center">
+                <input type="text" id="pdfFileName" placeholder="Document name" class="border border-gray-300 rounded-xl px-4 py-2 text-sm w-48">
+                <button id="previewPdfBtn" class="bg-gray-700 text-white px-5 py-2 rounded-xl shadow"><i class="fas fa-eye"></i> Preview PDF</button>
+                <button id="downloadPdfBtn" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-6 py-2 rounded-xl shadow flex items-center gap-2"><i class="fas fa-download"></i> Download PDF</button>
             </div>
         </div>
     </div>
 
     <script>
-        // ---------- DOM elements ----------
-        const video = document.getElementById('video');
+        // DOM Elements
+        const video = document.getElementById('cameraVideo');
+        const edgeCanvas = document.getElementById('edgeCanvas');
         const captureBtn = document.getElementById('captureBtn');
         const switchCamBtn = document.getElementById('switchCamBtn');
-        const galleryInput = document.getElementById('galleryInput');
-        const capturePreviewArea = document.getElementById('capturePreviewArea');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const cameraContainer = document.getElementById('cameraContainer');
+        const cameraWrapper = document.getElementById('cameraWrapper');
+        const previewArea = document.getElementById('previewArea');
         const previewCanvas = document.getElementById('previewCanvas');
-        const applyEnhanceBtn = document.getElementById('applyEnhanceBtn');
+        const applyKeepBtn = document.getElementById('applyKeepBtn');
         const cancelPreviewBtn = document.getElementById('cancelPreviewBtn');
-        const retakePreviewBtn = document.getElementById('retakePreviewBtn');
-        const thumbnailsContainer = document.getElementById('thumbnailsContainer');
+        const retakeBtn = document.getElementById('retakeBtn');
+        const thumbnailsList = document.getElementById('thumbnailsList');
         const pageCountSpan = document.getElementById('pageCount');
         const clearAllBtn = document.getElementById('clearAllBtn');
-        const generatePdfBtn = document.getElementById('generatePdfBtn');
+        const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+        const previewPdfBtn = document.getElementById('previewPdfBtn');
         const pdfFileNameInput = document.getElementById('pdfFileName');
         const loadingOverlay = document.getElementById('loadingOverlay');
         const loadingMessage = document.getElementById('loadingMessage');
+        const docStatus = document.getElementById('docStatus');
+        const runOcrBtn = document.getElementById('runOcrBtn');
+        const ocrResultPanel = document.getElementById('ocrResultPanel');
+        const ocrTextDisplay = document.getElementById('ocrTextDisplay');
+        const galleryImport = document.getElementById('galleryImport');
 
-        // ---------- Global state ----------
+        // State
         let currentStream = null;
-        let facingMode = 'environment'; // 'user' front, 'environment' back
-        let capturedPages = []; // store { imageDataUrl: string, width: number, height: number }
-        let pendingImageData = null;   // raw image data from capture before enhancement
+        let facingMode = 'environment';
+        let capturedPages = []; // { dataUrl, width, height, ocrText? }
+        let pendingImageData = null; // raw canvas before enhancement
         let isProcessing = false;
+        let isFullscreen = false;
+        let edgeDetectionInterval = null;
+        let currentVideoTrackSettings = null;
 
-        // Helper: show/hide loading
-        function showLoading(msg = 'Processing image...') {
-            loadingMessage.innerText = msg;
-            loadingOverlay.classList.remove('hidden');
-        }
-        function hideLoading() {
-            loadingOverlay.classList.add('hidden');
-        }
+        // Helper loading
+        function showLoading(msg) { loadingMessage.innerText = msg; loadingOverlay.classList.remove('hidden'); }
+        function hideLoading() { loadingOverlay.classList.add('hidden'); }
 
-        // Helper: update thumbnail gallery
-        function updateThumbnails() {
-            if (capturedPages.length === 0) {
-                thumbnailsContainer.innerHTML = `<div class="text-gray-400 text-center w-full py-6">No pages captured yet. Capture or import images.</div>`;
-                pageCountSpan.innerText = '0';
-                return;
-            }
-            pageCountSpan.innerText = capturedPages.length;
-            thumbnailsContainer.innerHTML = '';
-            capturedPages.forEach((page, idx) => {
-                const thumbDiv = document.createElement('div');
-                thumbDiv.className = 'thumb-item';
-                const img = document.createElement('img');
-                img.src = page.imageDataUrl;
-                img.className = 'thumb-img';
-                const deleteBtn = document.createElement('div');
-                deleteBtn.className = 'delete-thumb';
-                deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
-                deleteBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    capturedPages.splice(idx, 1);
-                    updateThumbnails();
-                };
-                thumbDiv.appendChild(img);
-                thumbDiv.appendChild(deleteBtn);
-                // optional reorder: drag and drop not required, but simple click to show? not needed
-                thumbDiv.onclick = () => {
-                    // just visual active effect
-                    document.querySelectorAll('.thumb-item').forEach(el => el.classList.remove('active-thumb'));
-                    thumbDiv.classList.add('active-thumb');
-                };
-                thumbnailsContainer.appendChild(thumbDiv);
-            });
-        }
-
-        // Camera init
+        // Camera initialization
         async function initCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-            const constraints = {
-                video: { facingMode: { exact: facingMode } }
-            };
+            if (currentStream) currentStream.getTracks().forEach(t => t.stop());
             try {
+                const constraints = { video: { facingMode: { exact: facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } } };
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream;
                 video.srcObject = stream;
                 await video.play();
+                startEdgeDetection();
             } catch (err) {
-                // fallback if exact fails
-                console.warn("Fallback to any camera", err);
+                console.warn(err);
                 try {
-                    const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                    currentStream = fallbackStream;
-                    video.srcObject = fallbackStream;
+                    const fallback = await navigator.mediaDevices.getUserMedia({ video: true });
+                    currentStream = fallback;
+                    video.srcObject = fallback;
                     await video.play();
-                } catch (e) {
-                    alert("Cannot access camera. Please allow permissions.");
-                }
+                    startEdgeDetection();
+                } catch (e) { alert("Camera permission denied"); }
             }
         }
 
-        // switch camera
-        async function switchCamera() {
-            facingMode = facingMode === 'environment' ? 'user' : 'environment';
-            await initCamera();
+        // Edge detection using OpenCV.js? We'll implement lightweight edge detection using canvas & sobel to highlight document boundaries
+        function startEdgeDetection() {
+            if (edgeDetectionInterval) clearInterval(edgeDetectionInterval);
+            edgeDetectionInterval = setInterval(() => {
+                if (!video.videoWidth || video.paused) return;
+                const ctx = edgeCanvas.getContext('2d');
+                edgeCanvas.width = video.videoWidth;
+                edgeCanvas.height = video.videoHeight;
+                // Draw video frame to temp canvas
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = video.videoWidth;
+                tempCanvas.height = video.videoHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+                const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const gray = new Uint8ClampedArray(tempCanvas.width * tempCanvas.height);
+                for (let i=0; i<imgData.data.length; i+=4) {
+                    gray[i/4] = 0.299*imgData.data[i] + 0.587*imgData.data[i+1] + 0.114*imgData.data[i+2];
+                }
+                // Sobel operator
+                const sobelX = [-1,0,1,-2,0,2,-1,0,1];
+                const sobelY = [-1,-2,-1,0,0,0,1,2,1];
+                const edges = new Uint8ClampedArray(tempCanvas.width * tempCanvas.height);
+                let maxGrad = 0;
+                const w = tempCanvas.width, h = tempCanvas.height;
+                for (let y=1; y<h-1; y++) {
+                    for (let x=1; x<w-1; x++) {
+                        let gx=0, gy=0;
+                        for (let ky=-1; ky<=1; ky++) {
+                            for (let kx=-1; kx<=1; kx++) {
+                                const val = gray[(y+ky)*w + (x+kx)];
+                                gx += val * sobelX[(ky+1)*3 + (kx+1)];
+                                gy += val * sobelY[(ky+1)*3 + (kx+1)];
+                            }
+                        }
+                        let mag = Math.hypot(gx, gy);
+                        if (mag > maxGrad) maxGrad = mag;
+                        edges[y*w+x] = mag;
+                    }
+                }
+                const threshold = maxGrad * 0.12;
+                ctx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 3;
+                // draw detected edges as contours (simple bounding box of strong edges)
+                let minX=w, minY=h, maxX=0, maxY=0, edgeCount=0;
+                for (let y=0; y<h; y++) {
+                    for (let x=0; x<w; x++) {
+                        if (edges[y*w+x] > threshold) {
+                            edgeCount++;
+                            if (x<minX) minX=x;
+                            if (x>maxX) maxX=x;
+                            if (y<minY) minY=y;
+                            if (y>maxY) maxY=y;
+                        }
+                    }
+                }
+                if (edgeCount > 500 && (maxX-minX) > w*0.2 && (maxY-minY) > h*0.2) {
+                    ctx.beginPath();
+                    ctx.rect(minX, minY, maxX-minX, maxY-minY);
+                    ctx.stroke();
+                    docStatus.innerHTML = '<span class="text-green-600"><i class="fas fa-check-circle"></i> Document detected! Ready to capture.</span>';
+                } else {
+                    docStatus.innerHTML = '<span class="text-yellow-600"><i class="fas fa-exclamation-triangle"></i> Position document within frame & guides</span>';
+                }
+            }, 300);
         }
 
-        // capture current video frame as image
-        function captureImageFromVideo() {
-            if (!video.videoWidth || !video.videoHeight) return null;
+        // Capture from video
+        function captureFrame() {
+            if (!video.videoWidth) return null;
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0);
             return canvas;
         }
 
-        // Apply document enhancement: edge detection simulation + grayscale + contrast + sharpening
-        // We'll implement an automatic "document-like" enhancement using convolution and curves.
-        // For edge detection, we perform a simple but effective combination: detect edges via sobel-like,
-        // but to avoid heavy opencv we implement basic sharpening, contrast, grayscale and optional auto-crop (simulate perspective crop).
-        // For simplicity and robust: we will provide grayscale + contrast stretch + unsharp mask, and automatic edge-based cropping is approximated
-        // but due to complexity we also provide a clean "crop to content" using basic threshold? For better UX, we'll perform a simple intelligent crop:
-        // find largest rectangle by contour simulation using luminance edges? In pure JS it may be heavy. Alternatively we provide a "auto deskew/crop" based on dominant edges.
-        // To meet requirement "automatically detect document edges if possible" we implement a basic edge detection + find bounding box of largest quadrilateral.
-        // Using canvas image data, we implement a reliable but fast edge detection + polygon detection.
-        
-        // Helper: convert to grayscale, contrast, sharpening kernel, and auto-crop detection.
-        async function enhanceDocumentImage(sourceCanvas) {
+        // Enhanced document processing: perspective correction simulation, grayscale, sharpening, auto crop from edge detection
+        async function enhanceDocument(rawCanvas) {
             return new Promise((resolve) => {
-                const offCanvas = document.createElement('canvas');
-                offCanvas.width = sourceCanvas.width;
-                offCanvas.height = sourceCanvas.height;
-                const ctx = offCanvas.getContext('2d');
-                ctx.drawImage(sourceCanvas, 0, 0);
-                let imageData = ctx.getImageData(0, 0, offCanvas.width, offCanvas.height);
-                
+                const w = rawCanvas.width, h = rawCanvas.height;
+                const canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(rawCanvas, 0, 0);
                 // 1. Grayscale
-                const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-                    data[i] = gray;
-                    data[i+1] = gray;
-                    data[i+2] = gray;
+                let imgData = ctx.getImageData(0,0,w,h);
+                let data = imgData.data;
+                for (let i=0;i<data.length;i+=4) {
+                    let gray = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+                    data[i]=gray; data[i+1]=gray; data[i+2]=gray;
                 }
-                ctx.putImageData(imageData, 0, 0);
-                
-                // 2. Contrast enhancement (linear stretch: percentile 5-95)
-                imageData = ctx.getImageData(0, 0, offCanvas.width, offCanvas.height);
-                const pixels = imageData.data;
-                let min = 255, max = 0;
-                for (let i = 0; i < pixels.length; i += 4) {
-                    let val = pixels[i];
-                    if (val < min) min = val;
-                    if (val > max) max = val;
-                }
-                const range = max - min;
-                if (range > 0) {
-                    for (let i = 0; i < pixels.length; i += 4) {
-                        let newVal = ((pixels[i] - min) / range) * 255;
-                        newVal = Math.min(255, Math.max(0, newVal));
-                        pixels[i] = newVal;
-                        pixels[i+1] = newVal;
-                        pixels[i+2] = newVal;
+                ctx.putImageData(imgData,0,0);
+                // 2. Contrast stretch
+                imgData = ctx.getImageData(0,0,w,h);
+                data = imgData.data;
+                let min=255, max=0;
+                for (let i=0;i<data.length;i+=4) { let v=data[i]; if(v<min) min=v; if(v>max) max=v; }
+                const range = max-min;
+                if(range>0){
+                    for(let i=0;i<data.length;i+=4){
+                        let newV = ((data[i]-min)/range)*255;
+                        data[i]=data[i+1]=data[i+2]=Math.min(255,Math.max(0,newV));
                     }
-                    ctx.putImageData(imageData, 0, 0);
+                    ctx.putImageData(imgData,0,0);
                 }
-                
-                // 3. Sharpening (unsharp mask via convolution kernel)
-                const sharpenKernel = [
-                    0, -1, 0,
-                    -1, 5, -1,
-                    0, -1, 0
-                ];
-                const sharpened = applyConvolution(ctx, offCanvas.width, offCanvas.height, sharpenKernel);
-                ctx.putImageData(sharpened, 0, 0);
-                
-                // 4. Auto edge detection & crop (simulate document corners)
-                // detect edges with simple gradient + find bounding box of large area
-                const edgeData = detectEdgesAndCrop(ctx, offCanvas.width, offCanvas.height);
-                if (edgeData && edgeData.croppedCanvas) {
-                    resolve(edgeData.croppedCanvas);
-                } else {
-                    resolve(offCanvas);
-                }
+                // 3. Sharpening kernel
+                const sharpen = [0,-1,0,-1,5,-1,0,-1,0];
+                const sharpened = applyConvolution(ctx, w, h, sharpen);
+                ctx.putImageData(sharpened,0,0);
+                // 4. Auto crop based on edge detection (same as earlier)
+                const edgeCrop = autoCropEdges(ctx, w, h);
+                if(edgeCrop) resolve(edgeCrop);
+                else resolve(canvas);
             });
         }
         
-        function applyConvolution(ctx, width, height, kernel) {
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const output = ctx.createImageData(width, height);
-            const src = imageData.data;
-            const dst = output.data;
-            const side = Math.sqrt(kernel.length);
-            const half = Math.floor(side/2);
-            for (let y = half; y < height - half; y++) {
-                for (let x = half; x < width - half; x++) {
-                    let r = 0, g = 0, b = 0;
-                    for (let ky = -half; ky <= half; ky++) {
-                        for (let kx = -half; kx <= half; kx++) {
-                            const weight = kernel[(ky+half)*side + (kx+half)];
-                            const ix = (x + kx) + (y + ky) * width;
-                            r += src[ix*4] * weight;
-                            g += src[ix*4+1] * weight;
-                            b += src[ix*4+2] * weight;
+        function applyConvolution(ctx, w, h, kernel) {
+            const imgData = ctx.getImageData(0,0,w,h);
+            const out = ctx.createImageData(w,h);
+            const src = imgData.data, dst = out.data;
+            const side=3, half=1;
+            for(let y=half; y<h-half; y++){
+                for(let x=half; x<w-half; x++){
+                    let r=0;
+                    for(let ky=-half; ky<=half; ky++){
+                        for(let kx=-half; kx<=half; kx++){
+                            const weight = kernel[(ky+half)*3+(kx+half)];
+                            const px = (x+kx) + (y+ky)*w;
+                            r += src[px*4] * weight;
                         }
                     }
-                    const idx = (x + y * width) * 4;
-                    dst[idx] = Math.min(255, Math.max(0, r));
-                    dst[idx+1] = Math.min(255, Math.max(0, g));
-                    dst[idx+2] = Math.min(255, Math.max(0, b));
-                    dst[idx+3] = 255;
+                    const idx = (x + y*w)*4;
+                    dst[idx]=dst[idx+1]=dst[idx+2]=Math.min(255,Math.max(0,r));
+                    dst[idx+3]=255;
                 }
             }
-            ctx.putImageData(output, 0, 0);
-            return ctx.getImageData(0,0,width,height);
+            return out;
         }
         
-        function detectEdgesAndCrop(ctx, w, h) {
-            // Simplified: compute luminance gradient magnitude, then find bounding box of non-zero edges > threshold
+        function autoCropEdges(ctx, w, h) {
             const imgData = ctx.getImageData(0,0,w,h);
             const gray = new Uint8ClampedArray(w*h);
-            for (let i=0; i<imgData.data.length; i+=4) {
-                gray[i/4] = imgData.data[i];
-            }
+            for(let i=0;i<imgData.data.length;i+=4) gray[i/4]=imgData.data[i];
             const sobelX = [-1,0,1,-2,0,2,-1,0,1];
             const sobelY = [-1,-2,-1,0,0,0,1,2,1];
             const edges = new Uint8ClampedArray(w*h);
-            let maxGrad = 0;
-            for (let y=1; y<h-1; y++) {
-                for (let x=1; x<w-1; x++) {
-                    let gx=0, gy=0;
-                    for (let ky=-1; ky<=1; ky++) {
-                        for (let kx=-1; kx<=1; kx++) {
-                            const val = gray[(y+ky)*w + (x+kx)];
-                            gx += val * sobelX[(ky+1)*3 + (kx+1)];
-                            gy += val * sobelY[(ky+1)*3 + (kx+1)];
+            let maxGrad=0;
+            for(let y=1;y<h-1;y++){
+                for(let x=1;x<w-1;x++){
+                    let gx=0,gy=0;
+                    for(let ky=-1;ky<=1;ky++){
+                        for(let kx=-1;kx<=1;kx++){
+                            let val = gray[(y+ky)*w+(x+kx)];
+                            gx += val * sobelX[(ky+1)*3+(kx+1)];
+                            gy += val * sobelY[(ky+1)*3+(kx+1)];
                         }
                     }
-                    let mag = Math.hypot(gx, gy);
-                    if (mag>maxGrad) maxGrad=mag;
-                    edges[y*w+x] = mag;
+                    let mag = Math.hypot(gx,gy);
+                    if(mag>maxGrad) maxGrad=mag;
+                    edges[y*w+x]=mag;
                 }
             }
-            const threshold = maxGrad * 0.15;
-            let minX = w, minY = h, maxX = 0, maxY = 0;
-            let edgeCount = 0;
-            for (let y=0; y<h; y++) {
-                for (let x=0; x<w; x++) {
-                    if (edges[y*w+x] > threshold) {
-                        edgeCount++;
-                        if (x<minX) minX=x;
-                        if (x>maxX) maxX=x;
-                        if (y<minY) minY=y;
-                        if (y>maxY) maxY=y;
+            let thresh = maxGrad*0.12;
+            let minX=w,minY=h,maxX=0,maxY=0,count=0;
+            for(let y=0;y<h;y++){
+                for(let x=0;x<w;x++){
+                    if(edges[y*w+x] > thresh){
+                        count++;
+                        if(x<minX) minX=x;
+                        if(x>maxX) maxX=x;
+                        if(y<minY) minY=y;
+                        if(y>maxY) maxY=y;
                     }
                 }
             }
-            if (edgeCount < 50 || (maxX-minX) < w*0.2 || (maxY-minY) < h*0.2) return null;
-            // add padding 2%
-            const padX = (maxX-minX)*0.02;
-            const padY = (maxY-minY)*0.02;
-            let cropX = Math.max(0, minX - padX);
-            let cropY = Math.max(0, minY - padY);
-            let cropW = Math.min(w - cropX, (maxX - minX) + padX*2);
-            let cropH = Math.min(h - cropY, (maxY - minY) + padY*2);
-            if (cropW <= 0 || cropH <= 0) return null;
-            const croppedCanvas = document.createElement('canvas');
-            croppedCanvas.width = cropW;
-            croppedCanvas.height = cropH;
-            const cropCtx = croppedCanvas.getContext('2d');
+            if(count<100 || (maxX-minX)<w*0.2) return null;
+            const pad=10;
+            let cropX=Math.max(0,minX-pad), cropY=Math.max(0,minY-pad);
+            let cropW=Math.min(w-cropX, maxX-minX+pad*2), cropH=Math.min(h-cropY, maxY-minY+pad*2);
+            if(cropW<=0||cropH<=0) return null;
+            const cropped = document.createElement('canvas');
+            cropped.width=cropW; cropped.height=cropH;
+            const cropCtx = cropped.getContext('2d');
             cropCtx.drawImage(ctx.canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-            return { croppedCanvas };
+            return cropped;
         }
-        
-        // When user captures new image -> show preview area
+
+        // Capture action
         async function onCapture() {
-            if (isProcessing) return;
-            const captureCanvas = captureImageFromVideo();
-            if (!captureCanvas) return;
-            pendingImageData = captureCanvas;
-            // show preview canvas raw
+            if(isProcessing) return;
+            const rawCanvas = captureFrame();
+            if(!rawCanvas) return;
+            pendingImageData = rawCanvas;
             const ctx = previewCanvas.getContext('2d');
-            previewCanvas.width = captureCanvas.width;
-            previewCanvas.height = captureCanvas.height;
-            ctx.drawImage(captureCanvas, 0, 0);
-            capturePreviewArea.classList.remove('hidden');
-            retakePreviewBtn.classList.add('hidden');
+            previewCanvas.width = rawCanvas.width;
+            previewCanvas.height = rawCanvas.height;
+            ctx.drawImage(rawCanvas, 0, 0);
+            previewArea.classList.remove('hidden');
             captureBtn.classList.add('hidden');
+            retakeBtn.classList.remove('hidden');
+            ocrResultPanel.classList.add('hidden');
         }
         
-        // cancel preview
+        async function applyEnhanceAndAdd() {
+            if(!pendingImageData) return;
+            showLoading('Enhancing document (crop, sharpen, grayscale)...');
+            isProcessing = true;
+            try {
+                const enhanced = await enhanceDocument(pendingImageData);
+                const finalDataUrl = enhanced.toDataURL('image/jpeg', 0.92);
+                capturedPages.push({ dataUrl: finalDataUrl, width: enhanced.width, height: enhanced.height, ocrText: '' });
+                updateThumbnails();
+                cancelPreview();
+            } catch(e) { console.error(e); alert("Enhancement error"); }
+            finally { hideLoading(); isProcessing = false; }
+        }
+        
         function cancelPreview() {
-            capturePreviewArea.classList.add('hidden');
+            previewArea.classList.add('hidden');
             captureBtn.classList.remove('hidden');
+            retakeBtn.classList.add('hidden');
             pendingImageData = null;
         }
         
-        // apply enhancement and add to pages
-        async function applyEnhancementAndAdd() {
-            if (!pendingImageData) return;
-            showLoading('Enhancing document & detecting edges...');
-            isProcessing = true;
+        // OCR using Tesseract.js
+        async function runOCRonCurrentPage() {
+            if(!pendingImageData) return;
+            showLoading('Running OCR, extracting text...');
             try {
-                const enhancedCanvas = await enhanceDocumentImage(pendingImageData);
-                const finalDataUrl = enhancedCanvas.toDataURL('image/jpeg', 0.92);
-                capturedPages.push({
-                    imageDataUrl: finalDataUrl,
-                    width: enhancedCanvas.width,
-                    height: enhancedCanvas.height
-                });
-                updateThumbnails();
-                cancelPreview();
-            } catch (err) {
-                console.error(err);
-                alert('Enhancement failed, using original.');
-                const rawUrl = pendingImageData.toDataURL('image/jpeg', 0.9);
-                capturedPages.push({ imageDataUrl: rawUrl, width: pendingImageData.width, height: pendingImageData.height });
-                updateThumbnails();
-                cancelPreview();
-            } finally {
-                hideLoading();
-                isProcessing = false;
-                captureBtn.classList.remove('hidden');
+                const canvas = pendingImageData;
+                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { logger: m => console.log(m) });
+                ocrTextDisplay.innerText = text || '(No text detected)';
+                ocrResultPanel.classList.remove('hidden');
+                // Store OCR text temporarily for display but not required for PDF
+            } catch(err) { ocrTextDisplay.innerText = 'OCR failed'; ocrResultPanel.classList.remove('hidden'); }
+            finally { hideLoading(); }
+        }
+        
+        // Thumbnails
+        function updateThumbnails() {
+            pageCountSpan.innerText = capturedPages.length;
+            if(capturedPages.length === 0) {
+                thumbnailsList.innerHTML = '<div class="text-gray-400 text-center w-full py-6">No pages scanned yet</div>';
+                return;
+            }
+            thumbnailsList.innerHTML = '';
+            capturedPages.forEach((page, idx) => {
+                const div = document.createElement('div');
+                div.className = 'thumb-item';
+                const img = document.createElement('img');
+                img.src = page.dataUrl;
+                img.className = 'thumb-img';
+                const delBtn = document.createElement('div');
+                delBtn.className = 'delete-thumb';
+                delBtn.innerHTML = '<i class="fas fa-times"></i>';
+                delBtn.onclick = (e) => { e.stopPropagation(); capturedPages.splice(idx,1); updateThumbnails(); };
+                div.appendChild(img);
+                div.appendChild(delBtn);
+                div.onclick = () => { document.querySelectorAll('.thumb-item').forEach(el=>el.classList.remove('active-thumb')); div.classList.add('active-thumb'); };
+                thumbnailsList.appendChild(div);
+            });
+        }
+        
+        // PDF Generation (pdf-lib)
+        async function generatePDFBlob() {
+            if(capturedPages.length===0) throw new Error('No pages');
+            const { PDFDocument, StandardFonts, rgb } = PDFLib;
+            const pdfDoc = await PDFDocument.create();
+            const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+            for(let i=0; i<capturedPages.length; i++) {
+                const pageData = capturedPages[i];
+                const imgBytes = await fetch(pageData.dataUrl).then(r=>r.arrayBuffer());
+                let img;
+                if(pageData.dataUrl.includes('jpeg')) img = await pdfDoc.embedJpg(imgBytes);
+                else img = await pdfDoc.embedPng(imgBytes);
+                const page = pdfDoc.addPage([img.width, img.height]);
+                page.drawImage(img, { x:0, y:0, width:img.width, height:img.height });
+                // Page numbering
+                page.drawText(`Page ${i+1} of ${capturedPages.length}`, { x: img.width-80, y: 20, size: 10, font, color: rgb(0.2,0.2,0.2) });
+            }
+            return await pdfDoc.save();
+        }
+        
+        async function downloadPDF() {
+            if(capturedPages.length===0) { alert('No scanned pages'); return; }
+            showLoading('Generating PDF...');
+            try {
+                const pdfBytes = await generatePDFBlob();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const filename = (pdfFileNameInput.value.trim() || 'scanned_document') + '.pdf';
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+                URL.revokeObjectURL(link.href);
+            } catch(e) { alert('PDF error'); } finally { hideLoading(); }
+        }
+        
+        async function previewPDF() {
+            if(capturedPages.length===0) return alert('No pages');
+            showLoading('Preparing preview...');
+            try {
+                const pdfBytes = await generatePDFBlob();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                URL.revokeObjectURL(url);
+            } catch(e) { alert('Preview error'); } finally { hideLoading(); }
+        }
+        
+        function clearAll() { if(confirm('Delete all scanned pages?')) { capturedPages=[]; updateThumbnails(); } }
+        
+        function toggleFullscreen() {
+            if(!isFullscreen) {
+                cameraWrapper.classList.add('fullscreen-camera');
+                isFullscreen=true;
+                fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i> Exit';
+            } else {
+                cameraWrapper.classList.remove('fullscreen-camera');
+                isFullscreen=false;
+                fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i> Fullscreen';
             }
         }
         
-        // Import from gallery
-        async function handleGalleryImport(files) {
-            if (!files.length) return;
-            showLoading('Importing images...');
-            for (let file of files) {
-                if (!file.type.startsWith('image/')) continue;
-                const img = new Image();
+        async function importGallery(files) {
+            if(!files.length) return;
+            showLoading('Importing & enhancing...');
+            for(let file of files) {
                 const url = URL.createObjectURL(file);
-                await new Promise((resolve) => {
+                const img = new Image();
+                await new Promise((res) => {
                     img.onload = async () => {
                         const canvas = document.createElement('canvas');
                         canvas.width = img.width;
                         canvas.height = img.height;
                         const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        // auto enhance each imported image
-                        const enhanced = await enhanceDocumentImage(canvas);
-                        capturedPages.push({ imageDataUrl: enhanced.toDataURL('image/jpeg', 0.9), width: enhanced.width, height: enhanced.height });
+                        ctx.drawImage(img,0,0);
+                        const enhanced = await enhanceDocument(canvas);
+                        capturedPages.push({ dataUrl: enhanced.toDataURL('image/jpeg',0.92), width: enhanced.width, height: enhanced.height, ocrText: '' });
                         URL.revokeObjectURL(url);
-                        resolve();
+                        res();
                     };
                     img.src = url;
                 });
@@ -520,74 +632,20 @@
             hideLoading();
         }
         
-        // Generate PDF using pdf-lib
-        async function generatePDF() {
-            if (capturedPages.length === 0) {
-                alert('No pages to generate PDF. Please capture documents.');
-                return;
-            }
-            showLoading('Creating PDF, please wait...');
-            try {
-                const { PDFDocument, rgb, StandardFonts } = PDFLib;
-                const pdfDoc = await PDFDocument.create();
-                const pageNumbering = pdfFileNameInput.value.trim() !== '' ? pdfFileNameInput.value.trim() : 'scanned_document';
-                for (let idx = 0; idx < capturedPages.length; idx++) {
-                    const pageData = capturedPages[idx];
-                    const imgBytes = await fetch(pageData.imageDataUrl).then(res => res.arrayBuffer());
-                    let imageEmbed;
-                    if (pageData.imageDataUrl.includes('jpeg') || pageData.imageDataUrl.includes('jpg')) {
-                        imageEmbed = await pdfDoc.embedJpg(imgBytes);
-                    } else {
-                        imageEmbed = await pdfDoc.embedPng(imgBytes);
-                    }
-                    const page = pdfDoc.addPage([imageEmbed.width, imageEmbed.height]);
-                    page.drawImage(imageEmbed, { x: 0, y: 0, width: imageEmbed.width, height: imageEmbed.height });
-                    // optional page numbering bonus
-                    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-                    const pageNumberText = `${idx+1} / ${capturedPages.length}`;
-                    page.drawText(pageNumberText, { x: imageEmbed.width - 50, y: 20, size: 10, font, color: rgb(0.2,0.2,0.2) });
-                }
-                const pdfBytes = await pdfDoc.save();
-                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-                const link = document.createElement('a');
-                const filename = `${pageNumbering}.pdf`;
-                link.href = URL.createObjectURL(blob);
-                link.download = filename;
-                link.click();
-                URL.revokeObjectURL(link.href);
-            } catch (err) {
-                console.error(err);
-                alert('PDF generation failed.');
-            } finally {
-                hideLoading();
-            }
-        }
-        
-        // clear all pages
-        function clearAllPages() {
-            if (capturedPages.length > 0 && confirm('Clear all scanned pages?')) {
-                capturedPages = [];
-                updateThumbnails();
-            }
-        }
-        
-        // Event binding
+        // Event listeners
         captureBtn.onclick = onCapture;
-        switchCamBtn.onclick = switchCamera;
-        applyEnhanceBtn.onclick = applyEnhancementAndAdd;
+        applyKeepBtn.onclick = applyEnhanceAndAdd;
         cancelPreviewBtn.onclick = cancelPreview;
-        clearAllBtn.onclick = clearAllPages;
-        generatePdfBtn.onclick = generatePDF;
-        galleryInput.onchange = (e) => {
-            if (e.target.files) handleGalleryImport(Array.from(e.target.files));
-            galleryInput.value = '';
-        };
+        retakeBtn.onclick = () => { cancelPreview(); };
+        switchCamBtn.onclick = async () => { facingMode = facingMode==='environment'?'user':'environment'; await initCamera(); };
+        fullscreenBtn.onclick = toggleFullscreen;
+        clearAllBtn.onclick = clearAll;
+        downloadPdfBtn.onclick = downloadPDF;
+        previewPdfBtn.onclick = previewPDF;
+        runOcrBtn.onclick = runOCRonCurrentPage;
+        galleryImport.onchange = (e) => { if(e.target.files) importGallery(Array.from(e.target.files)); galleryImport.value=''; };
         
-        // initial camera load
-        initCamera().catch(console.warn);
-        
-        // helper to hide retake? not needed but retake concept: if they cancel then capture again, fine.
-        // Also reset retakePreviewBtn hidden initially
+        initCamera();
     </script>
 </body>
 </html>
